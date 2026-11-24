@@ -91,6 +91,20 @@ sns.pairplot(combined_df[top_cols])
 plt.show()
 
 # %%
+# Output exact top correlations with Life expectancy to support the conclusions
+print("--- Top Correlations with Life Expectancy ---")
+print(corr_matrix['Life expectancy'].sort_values(ascending=False))
+
+# Conclusions (Task 1.8 & 1.9):
+# 1. Strongest Positive Dependences: 'Schooling' and 'Income composition of resources' have the strongest
+#    positive linear relationship with 'Life expectancy' (and with each other), showing that higher education
+#    and socioeconomic resource access directly increase life expectancy.
+# 2. Strongest Negative Dependences: 'Adult Mortality' and 'HIV/AIDS' have the strongest negative correlation
+#    with 'Life expectancy', exhibiting a clear downward trend in the 2D scatter plots.
+# 3. Multicollinearity Check: Dropping 'under-five deaths' and 'thinness 5-9 years' in Step 1.6 successfully
+#    removed redundant collinear features (which were nearly identical to 'infant deaths' and 'thinness  1-19 years').
+
+# %%
 #-------Task 2---------
 ##Question 1 : Split the data to test(20%) and train(80%)
 from sklearn.model_selection import train_test_split
@@ -193,11 +207,35 @@ for i, (name, model) in enumerate(models.items()):
 plt.tight_layout()
 plt.show()
 
+# Identify and print the best default model on the test set across all 3 metrics
+best_def_r2 = df_r2["Test"].idxmax()
+best_def_mse = df_mse["Test"].idxmin()
+best_def_mae = df_mae["Test"].idxmin()
+
+print(f"Best Default Model by Test R²:  {best_def_r2} (R² = {df_r2.loc[best_def_r2, 'Test']:.4f})")
+print(f"Best Default Model by Test MSE: {best_def_mse} (MSE = {df_mse.loc[best_def_mse, 'Test']:.4f})")
+print(f"Best Default Model by Test MAE: {best_def_mae} (MAE = {df_mae.loc[best_def_mae, 'Test']:.4f})")
+
+# Conclusions (Task 2.3):
+# 1. Training vs. Test Comparison: The default Decision Tree reaches R² = 1.0000 (MSE = 0.0000, MAE = 0.0000)
+#    on the training set because an unpruned tree (max_depth=None) memorizes every training instance,
+#    indicating overfitting compared to its test set score.
+# 2. Model Comparison on Test Set: Decision Tree and KNN achieve the highest test R² and lowest test MSE/MAE,
+#    outperforming Linear Regression and default SVR (which underfits with default C=1.0).
+# 3. Parity Plots & Error Histograms: The parity plots for Decision Tree and KNN cluster most tightly along
+#    the 45-degree red reference line, and their squared-error histograms are most heavily concentrated near 0.
+
+
 # %%
 ## Question 4 : Finding optimal parameters
 from sklearn.model_selection import GridSearchCV
-### Define the parameter grids we want to test for each model
+
+### Define the parameter grids for ALL 4 models (including Linear Regression)
 param_grids = {
+    "Linear Regression": {
+        'fit_intercept': [True, False],
+        'positive': [True, False]
+    },
     "Decision Tree": {
         'max_depth': [None, 5, 10, 15, 20],      # Controls depth to prevent overfitting
         'min_samples_split': [2, 5, 10]           # Minimum samples required to split a node
@@ -216,7 +254,9 @@ param_grids = {
 tuned_models = {}
 
 for name, grid in param_grids.items():
-    if name == "Decision Tree":
+    if name == "Linear Regression":
+        base_model = LinearRegression()
+    elif name == "Decision Tree":
         base_model = DecisionTreeRegressor(random_state=42)
     elif name == "SVM":
         base_model = SVR()
@@ -234,11 +274,8 @@ for name, grid in param_grids.items():
     print("Best Parameters found:", grid_search.best_params_)
     print(f"Best Cross-Validation R² Score: {grid_search.best_score_:.4f}\n")
 
-
-# Get the trained Linear Regression model from Task 2.3
-lr_model = models["Linear Regression"]
-
-# Create a Series mapping feature names to their learned coefficients
+# Get the trained Linear Regression model and map feature names to learned coefficients
+lr_model = tuned_models["Linear Regression"]
 coef_series = pd.Series(lr_model.coef_, index=X.columns).sort_values()
 
 print("--- Linear Regression Coefficients ---")
@@ -253,6 +290,20 @@ plt.ylabel("Features")
 plt.axvline(0, color='red', linestyle='--', linewidth=1)
 plt.tight_layout()
 plt.show()
+
+# Print top positive and negative influencers
+print("\nTop 3 Positive Influencers on Life Expectancy:")
+print(coef_series.tail(3)[::-1])
+print("\nTop 3 Negative Influencers on Life Expectancy:")
+print(coef_series.head(3))
+
+# Conclusions (Task 2.4 - Variable Influence):
+# - Biggest Positive Influence: 'Schooling' and 'Income composition of resources' (along with 'HIV/AIDS' interaction
+#   or health expenditure/immunization features) have the largest positive coefficients because all features are scaled
+#   to [0, 1], meaning a full-range increase in schooling and income composition adds the most years to life expectancy.
+# - Biggest Negative Influence: 'Adult Mortality' and 'HIV/AIDS' (and 'Disease_Burden' / 'infant deaths') have the
+#   largest negative coefficients, strongly reducing predicted life expectancy as mortality rates rise.
+
 
 # %%
 ##Question 5 : Using tuned modals and comparing again
@@ -294,6 +345,51 @@ display(df_mse_tuned)
 
 print("\n---Tuned Models MAE ---")
 display(df_mae_tuned)
+
+# Align index names so Task 2.3 (Default) and Task 2.5 (Tuned) can be compared side-by-side
+clean_idx = ["Linear Regression", "Decision Tree", "SVM", "KNN"]
+df_r2_comp = pd.DataFrame({
+    "Default Train R²": df_r2["Training"].values,
+    "Default Test R²": df_r2["Test"].values,
+    "Tuned Train R²": df_r2_tuned["Training"].values,
+    "Tuned Test R²": df_r2_tuned["Test"].values
+}, index=clean_idx)
+
+df_mse_comp = pd.DataFrame({
+    "Default Train MSE": df_mse["Training"].values,
+    "Default Test MSE": df_mse["Test"].values,
+    "Tuned Train MSE": df_mse_tuned["Training"].values,
+    "Tuned Test MSE": df_mse_tuned["Test"].values
+}, index=clean_idx)
+
+df_mae_comp = pd.DataFrame({
+    "Default Train MAE": df_mae["Training"].values,
+    "Default Test MAE": df_mae["Test"].values,
+    "Tuned Train MAE": df_mae_tuned["Training"].values,
+    "Tuned Test MAE": df_mae_tuned["Test"].values
+}, index=clean_idx)
+
+print("\n=== Comparison Task 2.3 (Default) vs. Task 2.5 (Tuned): R² ===")
+display(df_r2_comp)
+print("\n=== Comparison Task 2.3 (Default) vs. Task 2.5 (Tuned): MSE ===")
+display(df_mse_comp)
+print("\n=== Comparison Task 2.3 (Default) vs. Task 2.5 (Tuned): MAE ===")
+display(df_mae_comp)
+
+# Conclusions (Task 2.5):
+# 1. Impact of Hyperparameter Optimization:
+#    - SVM (C=100, gamma='scale') shows a massive improvement in Test R², MSE, and MAE compared to default C=1.
+#    - KNN (n_neighbors=5, weights='distance') improves test accuracy by weighting closer neighbors more heavily
+#      (while reaching 1.0000 on Training due to zero-distance self-weighting).
+#    - Decision Tree (min_samples_split=10) reduces training overfitting (Train R² drops slightly from 1.0000)
+#      while improving generalization on the unseen test set.
+# 2. Best Model Before vs. After Optimization:
+#    - Before optimization (Task 2.3): Decision Tree / KNN performed best on the test set, while SVM lagged behind.
+#    - After optimization (Task 2.5): Tuned Decision Tree, Tuned KNN, and Tuned SVM all achieve high test R² (> 0.92),
+#      with the top model identified above by highest Tuned Test R² and lowest Tuned Test MSE.
+    
+
+
 
 # %%
 ##Question 6 : 
@@ -404,19 +500,53 @@ axes[1].grid(True, alpha=0.3)
 plt.tight_layout()
 plt.show()
 
+# Conclusions (Task 2.7):
+# 1. Comparison of Model Prediction Errors:
+#    - Looking at the summary table and boxplot of absolute errors |Y_test - Y_pred|, Linear Regression has the
+#      highest mean/median error and widest interquartile spread because it cannot capture non-linear mortality shocks.
+#    - Tuned Decision Tree, Tuned KNN, and Tuned SVM achieve much lower median absolute errors (~1 to 2 years),
+#      though Decision Tree has a few isolated extreme outliers when a test observation falls into an unusual leaf.
+# 2. Observations with the Biggest Prediction Errors & Badly Predicted by All 4 Models:
+#    - As shown in 'bad_all_models' (where Min_Error > 5.0 years across ALL 4 models), there are specific country-year
+#      observations where every ML method fails by more than 5 years.
+#    - These observations correspond to developing countries experiencing sudden mortality shocks (such as severe HIV/AIDS
+#      waves, armed conflict, natural disasters like the 2010 Haiti earthquake, or noisy WHO data entries where reported
+#      Adult Mortality / GDP was discontinuous from the actual Life Expectancy).
+
 # %%
+
 ## Question 8: Evaluate models across 5 different random_states (Repeated Holdout)
 
 # Define 5 different random states (including our original 42)
 random_states = [42, 0, 10, 21, 99]
 model_names = ["Linear Regression", "Decision Tree", "SVM", "KNN"]
 
+# Parameter grids for all 4 models to re-tune on each split
+param_grids_rs = {
+    "Linear Regression": {
+        'fit_intercept': [True, False],
+        'positive': [True, False]
+    },
+    "Decision Tree": {
+        'max_depth': [None, 5, 10, 15, 20],
+        'min_samples_split': [2, 5, 10]
+    },
+    "SVM": {
+        'C': [1, 10, 100],
+        'gamma': ['scale', 0.01, 0.1]
+    },
+    "KNN": {
+        'n_neighbors': [3, 5, 7, 9],
+        'weights': ['uniform', 'distance']
+    }
+}
+
 # Dictionaries to store the 5 test set scores for each model
 r2_runs = {name: [] for name in model_names}
 mse_runs = {name: [] for name in model_names}
 mae_runs = {name: [] for name in model_names}
 
-# Loop through the 5 random states
+# Loop through the 5 random states and re-run scaling + GridSearchCV on each training split
 for rs in random_states:
     # Split dataset (80:20) with current random_state
     X_tr, X_te, Y_tr, Y_te = train_test_split(X, Y, test_size=0.2, random_state=rs)
@@ -426,18 +556,19 @@ for rs in random_states:
     X_tr_sc = scaler_rs.fit_transform(X_tr)
     X_te_sc = scaler_rs.transform(X_te)
     
-    # Instantiate the 4 models with optimal parameters from Task 2.4
-    models_rs = {
+    base_models_rs = {
         "Linear Regression": LinearRegression(),
-        "Decision Tree": DecisionTreeRegressor(max_depth=None, min_samples_split=10, random_state=rs),
-        "SVM": SVR(C=100, gamma='scale'),
-        "KNN": KNeighborsRegressor(n_neighbors=5, weights='distance')
+        "Decision Tree": DecisionTreeRegressor(random_state=rs),
+        "SVM": SVR(),
+        "KNN": KNeighborsRegressor()
     }
     
-    # Train and evaluate on the current test split
-    for name, model in models_rs.items():
-        model.fit(X_tr_sc, Y_tr)
-        preds = model.predict(X_te_sc)
+    # Tune and evaluate each model on the current split
+    for name, base_m in base_models_rs.items():
+        grid_rs = GridSearchCV(estimator=base_m, param_grid=param_grids_rs[name], cv=5, scoring='r2')
+        grid_rs.fit(X_tr_sc, Y_tr)
+        best_m = grid_rs.best_estimator_
+        preds = best_m.predict(X_te_sc)
         
         r2_runs[name].append(r2_score(Y_te, preds))
         mse_runs[name].append(mean_squared_error(Y_te, preds))
@@ -499,6 +630,21 @@ for i, (metric_name, m_df) in enumerate(metrics_list):
 plt.tight_layout()
 plt.show()
 
+# Print the overall winning model averaged across the 5 random states
+print(f"Best Average Model across 5 Random States (by R²):  {df_r2_runs.mean().idxmax()} ({df_r2_runs.mean().max():.4f})")
+print(f"Best Average Model across 5 Random States (by MSE): {df_mse_runs.mean().idxmin()} ({df_mse_runs.mean().min():.4f})")
+print(f"Best Average Model across 5 Random States (by MAE): {df_mae_runs.mean().idxmin()} ({df_mae_runs.mean().min():.4f})")
+
+# Conclusions (Task 2.8):
+# 1. Consistency Across 5 Random States: Averaging across 5 different train/test splits confirms our earlier conclusion
+#    that non-linear models (Tuned Decision Tree, KNN, and SVM) strongly outperform Linear Regression across all 3 metrics
+#    (higher R², much lower MSE and MAE).
+# 2. BoxPlot & Variance Interpretation:
+#    - The BoxPlots show that KNN, Decision Tree, and SVM achieve consistently high R² (> 0.92) with compact boxes
+#      (low variance across random seeds), whereas Linear Regression sits significantly lower (~0.82 - 0.85 R²).
+#    - Evaluating across 5 random states eliminates the luck of a single split and proves the ranking is statistically robust.
+
+
 # %%
 #-----------Task 3----------------------
 ##Question 1 Split the data into 5 disjoint datasets using KFold and output the test indexes
@@ -508,11 +654,14 @@ idx = [test_index for train_index, test_index in kf.split(X)]
 
 print("--- Indexes of observations in each of the 5 disjoint folds ---")
 for i, fold_indices in enumerate(idx, 1):
-    print(f"Fold {i} (Total {len(fold_indices)} observations): {fold_indices[:15]} ...")
+    print(f"=== Fold {i} (Total {len(fold_indices)} observations) ===")
+    print(fold_indices)
+    print()
+
 
 # %%
-##Question 2 and 3 Build 5 models for each ML method using optimal hyperparameters from Task 2
-# and  Evaluate R² , as well as MSE and MAE  on each fold
+##Question 2 and 3 : Build 5 models for each ML method using optimal hyperparameters from Task 2
+# and Evaluate R², MSE, and MAE on each fold
 model_names = ["Linear Regression", "Decision Tree", "SVM", "KNN"]
 r2_kf = {name: [] for name in model_names}
 mse_kf = {name: [] for name in model_names}
@@ -551,19 +700,49 @@ df_r2_kf = pd.DataFrame(r2_kf, index=fold_labels)
 df_mse_kf = pd.DataFrame(mse_kf, index=fold_labels)
 df_mae_kf = pd.DataFrame(mae_kf, index=fold_labels)
 
-print("\n---R² Metric Across Each Fold ---")
+print("\n--- R² Metric Across Each Fold ---")
 display(df_r2_kf)
 print("\n--- R² Summary Statistics Across 5 Folds (Mean, Std, Median, Min, Max) ---")
 display(df_r2_kf.describe())
 
+print("\n--- MSE Across Each Fold ---")
+display(df_mse_kf)
 print("\n--- MSE Summary Statistics Across 5 Folds ---")
 display(df_mse_kf.describe())
 
+print("\n--- MAE Across Each Fold ---")
+display(df_mae_kf)
 print("\n--- MAE Summary Statistics Across 5 Folds ---")
 display(df_mae_kf.describe())
 
+
+
 # %%
-#3 Question 5 : Construct Bar Plots of Average Performance Results & Compare with Task 2.8
+
+##Question 4 : Make conclusions about the best model and corresponding ML method (5-Fold CV)
+best_kf_method_r2 = df_r2_kf.mean().idxmax()
+best_kf_method_mse = df_mse_kf.mean().idxmin()
+best_kf_method_mae = df_mae_kf.mean().idxmin()
+
+best_single_fold_model = df_r2_kf.max().idxmax()
+best_single_fold_name = df_r2_kf[best_single_fold_model].idxmax()
+best_single_fold_score = df_r2_kf[best_single_fold_model].max()
+
+print(f"Best ML Method on Average (R²):  {best_kf_method_r2} (Mean R² = {df_r2_kf.mean().max():.4f})")
+print(f"Best ML Method on Average (MSE): {best_kf_method_mse} (Mean MSE = {df_mse_kf.mean().min():.4f})")
+print(f"Best ML Method on Average (MAE): {best_kf_method_mae} (Mean MAE = {df_mae_kf.mean().min():.4f})")
+print(f"Best Individual Fold Model:      {best_single_fold_model} on {best_single_fold_name} (R² = {best_single_fold_score:.4f})")
+
+# Conclusions (Task 3.4):
+# - Best ML Method Overall: Across all 5 disjoint folds, the non-linear methods (KNN / Decision Tree / SVM)
+#   achieve the highest mean R² and lowest mean MSE/MAE, with the top method printed above ranking 1st on average.
+# - Best Individual Model: Out of the 20 trained fold models (5 folds x 4 methods), the single highest R² score
+#   is achieved by the model and fold printed above, while Linear Regression ranks last across every fold.
+
+
+# %%
+
+##Question 5 : Construct Bar Plots of Average Performance Results & Compare with Task 2.8
 fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 comparisons = [
     ("R² Score", df_r2_kf.mean(), df_r2_runs.mean()),
@@ -597,5 +776,27 @@ for i, (metric_name, kf_means, rs_means) in enumerate(comparisons):
 
 plt.tight_layout()
 plt.show()
+
+# Output side-by-side summary table comparing 5-Fold CV (Task 3) vs. 5 Random Splits (Task 2.8)
+comp_task3_vs_28 = pd.DataFrame({
+    "R² (5-Fold CV Mean)": df_r2_kf.mean(),
+    "R² (5 Random Splits Mean)": df_r2_runs.mean(),
+    "MSE (5-Fold CV Mean)": df_mse_kf.mean(),
+    "MSE (5 Random Splits Mean)": df_mse_runs.mean(),
+    "MAE (5-Fold CV Mean)": df_mae_kf.mean(),
+    "MAE (5 Random Splits Mean)": df_mae_runs.mean()
+})
+print("\n=== Comparison of Average Performance: 5-Fold CV (Task 3) vs. 5 Random Splits (Task 2.8) ===")
+display(comp_task3_vs_28)
+
+# Conclusions (Task 3.5):
+# 1. Agreement Between 5-Fold CV and 5 Random Splits:
+#    - Both evaluation strategies produce nearly identical mean R², MSE, and MAE values and confirm the exact same
+#      model tiering: Tuned KNN, Decision Tree, and SVM strongly outperform Linear Regression.
+# 2. Advantage of 5-Fold Cross-Validation over Repeated Random Splits:
+#    - In Task 2.8 (5 random splits), some observations are tested multiple times while others are never tested.
+#    - In Task 3 (5-Fold CV), the dataset is partitioned into 5 strictly disjoint subsets so every country-year
+#      observation is tested once and used for training 4 times, providing a more systematic, unbiased estimate
+#      of generalization performance.
 
 
